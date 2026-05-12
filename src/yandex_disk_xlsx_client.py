@@ -22,16 +22,15 @@ from typing import Optional
 
 import requests
 import urllib3
-urllib3.disable_warnings()
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-from src.clients import ClientsManager
+urllib3.disable_warnings()
 
 logger = logging.getLogger("aaron-salon-bot")
 
 
-class YandexDiskXlsxClient(ClientsManager):
+class YandexDiskXlsxClient:
     """
     Хранит клиентов в XLSX-файле на Яндекс.Диске.
     Файл открывается онлайн как настоящая таблица.
@@ -69,7 +68,7 @@ class YandexDiskXlsxClient(ClientsManager):
                     method, url,
                     headers=self._headers,
                     timeout=30,
-                    verify=False,  # Яндекс использует самоподписанные сертификаты
+                    verify=False,
                     **kwargs
                 )
                 return resp
@@ -80,34 +79,57 @@ class YandexDiskXlsxClient(ClientsManager):
                 else:
                     raise
 
-    def _file_exists(self) -> bool:
+    def _create_folder_if_needed(self) -> None:
+        """Создаёт папку на Яндекс.Диске если её нет."""
+        folder = os.path.dirname(self._file_path)
+        if not folder or folder == "/":
+            return
+
         url = f"{self.API_BASE}/resources"
-        params = {"path": self._file_path}
-        resp = self._request("GET", url, params=params)
-        return resp.status_code == 200
+        params = {"path": folder}
+        resp = self._request("PUT", url, params=params)
+
+        if resp.status_code == 201:
+            logger.info("Created folder: %s", folder)
+        elif resp.status_code == 409:
+            logger.debug("Folder already exists: %s", folder)
+        else:
+            logger.warning("Folder creation status %s: %s", resp.status_code, resp.text[:100])
 
     def _download_file(self) -> bytes:
         """Скачивает XLSX с Диска как bytes."""
+        # Получаем ссылку на скачивание
         url = f"{self.API_BASE}/resources/download"
         params = {"path": self._file_path}
         resp = self._request("GET", url, params=params)
         resp.raise_for_status()
         download_url = resp.json()["href"]
 
+        # Скачиваем файл
         resp = self._request("GET", download_url)
         resp.raise_for_status()
         return resp.content
 
     def _upload_file(self, content: bytes) -> None:
         """Загружает XLSX на Диск."""
+        # Сначала убедимся что папка существует
+        self._create_folder_if_needed()
+
+        # Получаем ссылку для загрузки
         url = f"{self.API_BASE}/resources/upload"
         params = {"path": self._file_path, "overwrite": "true"}
         resp = self._request("GET", url, params=params)
-        resp.raise_for_status()
+
+        if resp.status_code != 200:
+            logger.error("Failed to get upload URL: %s %s", resp.status_code, resp.text[:200])
+            raise RuntimeError(f"Cannot get upload URL: {resp.status_code}")
+
         upload_url = resp.json()["href"]
 
+        # Загружаем
         resp = self._request("PUT", upload_url, data=content)
         resp.raise_for_status()
+        logger.info("File uploaded successfully to Yandex Disk")
 
     def _create_workbook(self) -> bytes:
         """Создаёт новый XLSX с заголовками."""
@@ -146,13 +168,6 @@ class YandexDiskXlsxClient(ClientsManager):
         wb.save(output)
         return output.getvalue()
 
-    def _ensure_file_exists(self) -> None:
-        if self._file_exists():
-            return
-        content = self._create_workbook()
-        self._upload_file(content)
-        logger.info("Created new clients.xlsx on Yandex Disk")
-
     def _read_all(self) -> list[dict]:
         """Читает все записи из XLSX."""
         try:
@@ -180,7 +195,7 @@ class YandexDiskXlsxClient(ClientsManager):
             return []
 
     def _write_all(self, rows: list[dict]) -> None:
-        """Перезаписывает весь XLSX."""
+        """Перезаписывает весь XLSX на Диске."""
         wb = Workbook()
         ws = wb.active
         ws.title = "Клиенты"
@@ -202,14 +217,14 @@ class YandexDiskXlsxClient(ClientsManager):
         # Данные
         for row_idx, row_data in enumerate(rows, 2):
             values = [
-                row_data.get("client_id", ""),
-                row_data.get("name", ""),
-                row_data.get("phone", ""),
-                row_data.get("first_contact", ""),
-                row_data.get("last_contact", ""),
-                row_data.get("last_service_date", ""),
-                row_data.get("last_service_name", ""),
-                row_data.get("total_visits", ""),
+                row_data.get("ID клиента", ""),
+                row_data.get("Имя", ""),
+                row_data.get("Телефон", ""),
+                row_data.get("Первый контакт", ""),
+                row_data.get("Последний контакт", ""),
+                row_data.get("Дата услуги", ""),
+                row_data.get("Услуга", ""),
+                row_data.get("Визитов", ""),
             ]
             for col_idx, value in enumerate(values, 1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=value)

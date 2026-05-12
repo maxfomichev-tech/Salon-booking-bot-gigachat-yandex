@@ -102,6 +102,9 @@ class YandexCalendarClient:
         now_str = datetime.utcnow().strftime(dt_format)
 
         summary = f"Запись: {booking.service_name}"
+
+        # iCalendar требует экранирования новых строк в DESCRIPTION
+        # \n = буквальный backslash + n в файле (что интерпретируется как newline)
         description = (
             f"Клиент: {booking.client_name}\n"
             f"Телефон: {booking.phone}\n"
