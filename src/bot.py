@@ -251,6 +251,7 @@ async def book_confirm(message: Message, state: FSMContext, app: AppState) -> No
     await state.clear()
     await message.answer("✅ Готово! Вы записаны! Ждём вас 💖")
 
+    # FIX: Передаём service_date (время записи) в таблицу клиентов
     try:
         await asyncio.to_thread(
             app.clients.add_or_update,
@@ -258,6 +259,7 @@ async def book_confirm(message: Message, state: FSMContext, app: AppState) -> No
             name=data["client_name"],
             phone=data["phone"],
             service_name=data["service"],
+            service_date=data["start_iso"],  # ← FIX: дата записи, не текущее время
         )
         logger.info("Client saved: %s", message.from_user.id)
     except Exception as e:

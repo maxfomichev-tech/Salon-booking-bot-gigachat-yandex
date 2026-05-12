@@ -17,6 +17,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -61,8 +62,8 @@ class YandexDiskXlsxClient:
         logger.info("YandexDiskXlsxClient initialized, file: %s", file_path)
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
-        """HTTP-запрос с retry."""
-        for attempt in range(3):
+        """HTTP-запрос с retry на 423 Resource Locked и ConnectionError."""
+        for attempt in range(5):
             try:
                 resp = requests.request(
                     method, url,
@@ -71,13 +72,24 @@ class YandexDiskXlsxClient:
                     verify=False,
                     **kwargs
                 )
+                # Retry on 423 Resource Locked with exponential backoff
+                if resp.status_code == 423:
+                    wait = 2 ** attempt  # 1, 2, 4, 8, 16 сек
+                    logger.warning(
+                        "423 Resource Locked on %s %s, attempt %s/5, retrying in %ss...",
+                        method, url, attempt + 1, wait
+                    )
+                    time.sleep(wait)
+                    continue
                 return resp
             except requests.exceptions.ConnectionError:
-                if attempt < 2:
-                    import time
-                    time.sleep(1)
+                if attempt < 4:
+                    wait = 1 * (2 ** attempt)
+                    logger.warning("ConnectionError, retrying in %ss...", wait)
+                    time.sleep(wait)
                 else:
                     raise
+        return resp
 
     def _create_folder_if_needed(self) -> None:
         """Создаёт папку на Яндекс.Диске если её нет."""
@@ -85,14 +97,20 @@ class YandexDiskXlsxClient:
         if not folder or folder == "/":
             return
 
-        url = f"{self.API_BASE}/resources"
-        params = {"path": folder}
-        resp = self._request("PUT", url, params=params)
+        # Сначала проверим, существует ли папка (чтобы не лочить ресурс)
+        check_url = f"{self.API_BASE}/resources"
+        check_resp = self._request("GET", check_url, params={"path": folder})
+        if check_resp.status_code == 200:
+            logger.debug("Folder already exists: %s", folder)
+            return
+
+        # Создаём папку
+        resp = self._request("PUT", check_url, params={"path": folder})
 
         if resp.status_code == 201:
             logger.info("Created folder: %s", folder)
         elif resp.status_code == 409:
-            logger.debug("Folder already exists: %s", folder)
+            logger.debug("Folder already exists (race condition): %s", folder)
         else:
             logger.warning("Folder creation status %s: %s", resp.status_code, resp.text[:100])
 
