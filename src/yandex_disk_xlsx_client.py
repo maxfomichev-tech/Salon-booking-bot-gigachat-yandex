@@ -59,7 +59,6 @@ class YandexDiskXlsxClient(ClientsManager):
         self._file_path = file_path
         self._headers = {"Authorization": f"OAuth {oauth_token}"}
 
-        self._ensure_file_exists()
         logger.info("YandexDiskXlsxClient initialized, file: %s", file_path)
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
