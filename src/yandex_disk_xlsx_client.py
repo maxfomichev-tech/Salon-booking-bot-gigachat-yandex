@@ -252,15 +252,26 @@ class YandexDiskXlsxClient:
         name: str,
         phone: str,
         service_name: str,
+        service_date: str | None = None,
     ) -> None:
-        """Добавляет или обновляет клиента в XLSX на Яндекс.Диске."""
+        """Добавляет или обновляет клиента в XLSX на Яндекс.Диске.
+
+        Args:
+            service_date: Дата и время услуги (ISO format). 
+                         Если None — используется текущее время.
+        """
         now = datetime.now().isoformat()
+        # Дата услуги = переданная дата записи, или текущее время
+        last_service = service_date if service_date else now
+
         rows = self._read_all()
 
         for row in rows:
             if str(row.get("ID клиента", "")) == str(client_id):
+                # Обновляем существующего
+                # first_contact НЕ трогаем!
                 row["Последний контакт"] = now
-                row["Дата услуги"] = now
+                row["Дата услуги"] = last_service  # ← Дата из записи!
                 row["Услуга"] = service_name
                 row["Визитов"] = str(int(str(row.get("Визитов", "0"))) + 1)
                 if not row.get("Имя"):
@@ -271,13 +282,14 @@ class YandexDiskXlsxClient:
                 logger.info("Updated client %s in XLSX", client_id)
                 return
 
+        # Новый клиент
         rows.append({
             "ID клиента": str(client_id),
             "Имя": name,
             "Телефон": phone,
             "Первый контакт": now,
             "Последний контакт": now,
-            "Дата услуги": now,
+            "Дата услуги": last_service,  # ← Дата из записи!
             "Услуга": service_name,
             "Визитов": "1",
         })
