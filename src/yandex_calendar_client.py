@@ -103,8 +103,9 @@ class YandexCalendarClient:
 
         summary = f"Запись: {booking.service_name}"
 
-        # iCalendar требует экранирования новых строк в DESCRIPTION
-        # Каждая строка переноса должна начинаться с пробела
+        # iCalendar RFC 5545: перенос строк в DESCRIPTION — через \n (буквальный backslash + n)
+        # ИЛИ через пробел в начале продолжения строки (folding)
+        # Яндекс.Календарь лучше понимает \n
         description = (
             f"Клиент: {booking.client_name}\n"
             f"Телефон: {booking.phone}\n"

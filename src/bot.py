@@ -59,7 +59,18 @@ def _parse_datetime_ru(text: str, tz: str) -> datetime | None:
 
 
 def _is_weekend(dt: datetime) -> bool:
+    """Суббота — выходной."""
     return dt.weekday() == 5
+
+
+def _is_outside_work_hours(dt: datetime, work_start: int = 10, work_end: int = 20) -> bool:
+    """Проверяет, что время вне рабочих часов (по умолчанию 10:00–20:00)."""
+    return dt.hour < work_start or dt.hour >= work_end
+
+
+def _format_work_hours(work_start: int = 10, work_end: int = 20) -> str:
+    """Форматирует часы работы для сообщения."""
+    return f"{work_start:02d}:00–{work_end:02d}:00"
 
 
 @dataclass(frozen=True)
@@ -158,11 +169,20 @@ async def book_dt(message: Message, state: FSMContext, app: AppState) -> None:
         )
         return
 
+    # FIX: Проверка выходного дня (суббота)
     if _is_weekend(dt):
         await message.answer(
             "⚠️ Вы выбрали выходной день.\n"
             "Наш салон работает с воскресенья по пятницу.\n"
             "Пожалуйста, выберите другую дату."
+        )
+        return
+
+    # FIX: Проверка рабочего времени (10:00–20:00)
+    if _is_outside_work_hours(dt):
+        await message.answer(
+            f"⚠️ Салон работает с {_format_work_hours()}.\n"
+            f"Вы выбрали {dt.strftime('%H:%M')}. Пожалуйста, выберите время в рабочие часы."
         )
         return
 

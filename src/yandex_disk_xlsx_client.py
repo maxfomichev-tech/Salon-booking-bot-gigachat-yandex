@@ -292,10 +292,9 @@ class YandexDiskXlsxClient:
                 row["Дата услуги"] = last_service  # ← Дата из записи!
                 row["Услуга"] = service_name
                 row["Визитов"] = str(int(str(row.get("Визитов", "0"))) + 1)
-                if not row.get("Имя"):
-                    row["Имя"] = name
-                if not row.get("Телефон"):
-                    row["Телефон"] = phone
+                # FIX: Всегда обновляем имя и телефон актуальными данными
+                row["Имя"] = name
+                row["Телефон"] = phone
                 self._write_all(rows)
                 logger.info("Updated client %s in XLSX", client_id)
                 return
