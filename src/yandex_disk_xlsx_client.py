@@ -169,6 +169,12 @@ class YandexDiskXlsxClient(ClientsManager):
                 records.append(dict(zip(headers, row)))
 
             return records
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.info("File not found on Yandex Disk, returning empty list")
+                return []
+            logger.error("Error reading XLSX: %s", e)
+            return []
         except Exception as e:
             logger.error("Error reading XLSX: %s", e)
             return []

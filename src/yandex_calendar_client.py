@@ -101,11 +101,12 @@ class YandexCalendarClient:
         end_str = end_utc.strftime(dt_format)
         now_str = datetime.utcnow().strftime(dt_format)
 
-        summary = f"{booking.salon_name}: {booking.service_name}"
+        summary = f"Запись: {booking.service_name}"
         description = (
             f"Клиент: {booking.client_name}\n"
             f"Телефон: {booking.phone}\n"
-            f"Услуга: {booking.service_name}"
+            f"Услуга: {booking.service_name}\n"
+            f"Салон: {booking.salon_name}"
         )
 
         ics = f"""BEGIN:VCALENDAR
