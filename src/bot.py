@@ -59,8 +59,8 @@ def _parse_datetime_ru(text: str, tz: str) -> datetime | None:
 
 
 def _is_weekend(dt: datetime) -> bool:
-    """Суббота — выходной."""
-    return dt.weekday() == 5
+    """Суббота и воскресенье — выходной."""
+    return dt.weekday() >= 5
 
 
 def _is_outside_work_hours(dt: datetime, work_start: int = 10, work_end: int = 20) -> bool:
@@ -138,7 +138,7 @@ async def book_service(message: Message, state: FSMContext, app: AppState) -> No
     svc = _match_service(app.services, message.text or "")
     if not svc:
         await message.answer(
-            "Не нашёл такую услугу. Напишите точнее, или /price чтобы посмотреть список."
+            "Не нашёл такую услугу. Напишите точнее, или /price чтобы посмотреть список или /help для консультации."
         )
         return
 
@@ -164,16 +164,16 @@ async def book_dt(message: Message, state: FSMContext, app: AppState) -> None:
     if not dt:
         await message.answer(
             "Не понял дату/время. Форматы:\n<code>20.04 15:30</code> или <code>2026-04-20 15:30</code>,\n"
-            "или нажмите /start для продолжения консультации",
+            "или нажмите /help для продолжения консультации",
             parse_mode=ParseMode.HTML,
         )
         return
 
-    # FIX: Проверка выходного дня (суббота)
+    # FIX: Проверка выходного дня
     if _is_weekend(dt):
         await message.answer(
             "⚠️ Вы выбрали выходной день.\n"
-            "Наш салон работает с воскресенья по пятницу.\n"
+            "Наш салон работает с понедельника по пятницу.\n"
             "Пожалуйста, выберите другую дату."
         )
         return

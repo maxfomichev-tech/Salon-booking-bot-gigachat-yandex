@@ -107,9 +107,9 @@ class YandexCalendarClient:
         # ИЛИ через пробел в начале продолжения строки (folding)
         # Яндекс.Календарь лучше понимает \n
         description = (
-            f"Клиент: {booking.client_name}\n"
-            f"Телефон: {booking.phone}\n"
-            f"Услуга: {booking.service_name}\n"
+            f"Клиент: {booking.client_name};"
+            f"Телефон: {booking.phone};"
+            f"Услуга: {booking.service_name};"
             f"Салон: {booking.salon_name}"
         )
 
