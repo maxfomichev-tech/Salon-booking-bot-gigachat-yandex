@@ -13,7 +13,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
@@ -28,6 +28,7 @@ logger = logging.getLogger("aaron-salon-bot")
 
 
 class BookingFlow(StatesGroup):
+    category = State()
     service = State()
     dt = State()
     name = State()
@@ -69,6 +70,55 @@ def _is_outside_work_hours(dt: datetime, work_start: int, work_end: int) -> bool
 
 def _format_work_hours(work_start: int, work_end: int) -> str:
     return f"{work_start:02d}:00–{work_end:02d}:00"
+
+
+def _categories_keyboard(services: list[Service]) -> InlineKeyboardMarkup:
+    cats = sorted({s.category for s in services})
+    kb = [[InlineKeyboardButton(text=cat, callback_data=f"cat:{cat}")] for cat in cats]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def _services_keyboard(services: list[Service], category: str, page: int = 0) -> InlineKeyboardMarkup:
+    cat_svcs = [(i, s) for i, s in enumerate(services) if s.category == category]
+    PER_PAGE = 8
+    total = (len(cat_svcs) + PER_PAGE - 1) // PER_PAGE
+    start = page * PER_PAGE
+    items = cat_svcs[start:start + PER_PAGE]
+
+    kb = [[InlineKeyboardButton(text=s.label, callback_data=f"svc:{orig_i}")] for orig_i, s in items]
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="← Назад", callback_data=f"page:{page - 1}"))
+    if page < total - 1:
+        nav.append(InlineKeyboardButton(text="Ещё →", callback_data=f"page:{page + 1}"))
+    if nav:
+        kb.append(nav)
+    kb.append([InlineKeyboardButton(text="← К категориям", callback_data="back:cat")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def _time_slots_keyboard(work_start: int, work_end: int) -> InlineKeyboardMarkup:
+    slots = list(range(work_start, work_end, 2))
+    kb = []
+    row = []
+    for h in slots:
+        row.append(InlineKeyboardButton(text=f"{h:02d}:00", callback_data=f"time:{h:02d}:00"))
+        if len(row) == 3:
+            kb.append(row)
+            row = []
+    if row:
+        kb.append(row)
+    kb.append([InlineKeyboardButton(text="⌨️ Другое время", callback_data="time:other")])
+    kb.append([InlineKeyboardButton(text="← Назад", callback_data="back:dt")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def _confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, записать", callback_data="confirm:yes")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="confirm:no")],
+    ])
 
 
 @dataclass(frozen=True)
@@ -125,19 +175,158 @@ async def cmd_price(message: Message, app: AppState) -> None:
 
 
 async def cmd_book(message: Message, state: FSMContext, app: AppState) -> None:
-    await state.set_state(BookingFlow.service)
+    await state.set_state(BookingFlow.category)
     await state.update_data(draft={})
     await message.answer(
-        "📝 Ок, давайте запишем вас. Напишите название услуги (как в прайсе). Например:\n"
-        f"{app.services[0].service}"
+        "📝 Ок, давайте запишем вас. Выберите категорию или напишите название услуги:",
+        reply_markup=_categories_keyboard(app.services),
     )
 
 
+async def handle_category_cb(cq: CallbackQuery, state: FSMContext, app: AppState) -> None:
+    cat = cq.data.split(":", 1)[1]
+    await state.update_data(category=cat)
+    await state.set_state(BookingFlow.service)
+    await cq.message.edit_text(
+        f"📌 {cat}. Выберите услугу:",
+        reply_markup=_services_keyboard(app.services, cat),
+    )
+    await cq.answer()
+
+
+async def handle_service_page_cb(cq: CallbackQuery, state: FSMContext, app: AppState) -> None:
+    page = int(cq.data.split(":", 1)[1])
+    data = await state.get_data()
+    cat = data.get("category", "")
+    await cq.message.edit_reply_markup(reply_markup=_services_keyboard(app.services, cat, page))
+    await cq.answer()
+
+
+async def handle_service_cb(cq: CallbackQuery, state: FSMContext, app: AppState) -> None:
+    idx = int(cq.data.split(":", 1)[1])
+    svc = app.services[idx]
+    await state.update_data(
+        service=svc.service,
+        duration_minutes=svc.duration_minutes,
+        price_rub=svc.price_rub,
+    )
+    await state.set_state(BookingFlow.dt)
+    await cq.message.edit_text(
+        "✅ Отлично. Напишите дату. Например: <code>20.06</code> или <code>20.06 15:30</code>\n"
+        f"Часовой пояс: {app.cfg.salon_timezone}",
+        parse_mode=ParseMode.HTML,
+    )
+    await cq.answer()
+
+
+async def handle_time_cb(cq: CallbackQuery, state: FSMContext, app: AppState) -> None:
+    data = await state.get_data()
+    selected_date_iso = data.get("selected_date_iso")
+    if not selected_date_iso:
+        await cq.message.answer("Сначала напишите дату.")
+        await cq.answer()
+        return
+
+    time_part = cq.data.split(":", 1)[1]
+    if time_part == "other":
+        await cq.message.edit_text(
+            "Напишите дату и время полностью. Например: <code>20.06 15:30</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        await cq.answer()
+        return
+
+    hour, minute = map(int, time_part.split(":"))
+    dt = datetime.fromisoformat(selected_date_iso).replace(hour=hour, minute=minute)
+
+    if _is_weekend(dt):
+        await cq.message.answer(
+            "⚠️ Вы выбрали выходной день.\n"
+            "Салон работает с понедельника по пятницу. Выберите другую дату.",
+            reply_markup=_time_slots_keyboard(app.cfg.work_start_hour, app.cfg.work_end_hour),
+        )
+        await cq.answer()
+        return
+
+    if _is_outside_work_hours(dt, app.cfg.work_start_hour, app.cfg.work_end_hour):
+        await cq.message.answer(
+            f"⚠️ Салон работает с {_format_work_hours(app.cfg.work_start_hour, app.cfg.work_end_hour)}.\n"
+            f"Вы выбрали {dt.strftime('%H:%M')}. Пожалуйста, выберите время в рабочие часы.",
+            reply_markup=_time_slots_keyboard(app.cfg.work_start_hour, app.cfg.work_end_hour),
+        )
+        await cq.answer()
+        return
+
+    duration = int(data.get("duration_minutes", 60))
+    end = dt + timedelta(minutes=duration)
+
+    try:
+        if not app.calendar.is_time_available(dt, end):
+            await cq.message.answer(
+                f"⚠️ К сожалению, время {dt.strftime('%H:%M')} уже занято. Выберите другое:",
+                reply_markup=_time_slots_keyboard(app.cfg.work_start_hour, app.cfg.work_end_hour),
+            )
+            await cq.answer()
+            return
+    except Exception as e:
+        logger.error("Error checking availability: %s", e)
+
+    await state.update_data(start_iso=dt.isoformat())
+    await state.set_state(BookingFlow.name)
+    await cq.message.edit_text("😊 Как вас зовут?")
+    await cq.answer()
+
+
+async def handle_back_cb(cq: CallbackQuery, state: FSMContext, app: AppState) -> None:
+    target = cq.data.split(":", 1)[1]
+    if target == "cat":
+        await state.set_state(BookingFlow.category)
+        await cq.message.edit_text(
+            "Выберите категорию или напишите название услуги:",
+            reply_markup=_categories_keyboard(app.services),
+        )
+    elif target == "dt":
+        await state.set_state(BookingFlow.dt)
+        await cq.message.edit_text(
+            "Напишите дату. Например: <code>20.06</code> или <code>20.06 15:30</code>",
+            parse_mode=ParseMode.HTML,
+        )
+    await cq.answer()
+
+
+async def handle_confirm_cb(cq: CallbackQuery, state: FSMContext, app: AppState) -> None:
+    answer = cq.data.split(":", 1)[1]
+    if answer == "no":
+        await state.clear()
+        await cq.message.edit_text("❌ Отменил. Если захотите — /book")
+        await cq.answer()
+        return
+
+    await confirm_booking(cq.message, state, app)
+    await cq.answer()
+
+
 async def book_service(message: Message, state: FSMContext, app: AppState) -> None:
+    # также срабатывает если пользователь напечатал название вручную
+    category = None
+    for cat in sorted({s.category for s in app.services}):
+        if cat.lower() in (message.text or "").lower():
+            category = cat
+            break
+    if category and not _match_service(app.services, message.text or ""):
+        await state.update_data(category=category)
+        await state.set_state(BookingFlow.service)
+        await message.answer(
+            f"📌 {category}. Выберите услугу:",
+            reply_markup=_services_keyboard(app.services, category),
+        )
+        return
+
     svc = _match_service(app.services, message.text or "")
     if not svc:
         await message.answer(
-            "Не нашёл такую услугу. Напишите точнее, или /price чтобы посмотреть список или /help для консультации."
+            "Не нашёл такую услугу. Выберите категорию:",
+            reply_markup=_categories_keyboard(app.services),
         )
         return
 
@@ -168,7 +357,20 @@ async def book_dt(message: Message, state: FSMContext, app: AppState) -> None:
         )
         return
 
-    # FIX: Проверка выходного дня
+    # если время не указано — показываем слоты
+    time_specified = any(c.isdigit() for c in message.text.split()[-1]) if len(message.text.split()) >= 2 else False
+    has_time = len(message.text.split()) >= 2 and (":" in message.text.split()[-1] or time_specified)
+
+    if not has_time:
+        # только дата — сохраняем и показываем слоты
+        dt_midnight = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        await state.update_data(selected_date_iso=dt_midnight.isoformat())
+        await message.answer(
+            f"📅 {dt.strftime('%d.%m.%Y')}. Выберите время:",
+            reply_markup=_time_slots_keyboard(app.cfg.work_start_hour, app.cfg.work_end_hour),
+        )
+        return
+
     if _is_weekend(dt):
         await message.answer(
             "⚠️ Вы выбрали выходной день.\n"
@@ -232,21 +434,12 @@ async def book_phone(message: Message, state: FSMContext) -> None:
         f"- Услуга: {data['service']} ({data['duration_minutes']} мин, {data['price_rub']} ₽)\n"
         f"- Когда: {formatted_date}\n"
         f"- Имя: {data['client_name']}\n"
-        f"- Телефон: {data['phone']}\n\n"
-        "Ответьте «да» ✅ чтобы подтвердить или «нет» ❌ чтобы отменить."
+        f"- Телефон: {data['phone']}",
+        reply_markup=_confirm_keyboard(),
     )
 
 
-async def book_confirm(message: Message, state: FSMContext, app: AppState) -> None:
-    answer = (message.text or "").strip().lower()
-    if answer not in {"да", "нет"}:
-        await message.answer("Ответьте «да» или «нет».")
-        return
-    if answer == "нет":
-        await state.clear()
-        await message.answer("❌ Ок, отменил. Если захотите — нажмите /book 📝")
-        return
-
+async def confirm_booking(msg: Message, state: FSMContext, app: AppState) -> None:
     data = await state.get_data()
     start = datetime.fromisoformat(data["start_iso"])
     booking = Booking(
@@ -267,25 +460,24 @@ async def book_confirm(message: Message, state: FSMContext, app: AppState) -> No
         link = ""
 
     await state.clear()
-    await message.answer("✅ Готово! Вы записаны! Ждём вас 💖")
+    await msg.answer("✅ Готово! Вы записаны! Ждём вас 💖")
 
-    # FIX: Передаём service_date (время записи) в таблицу клиентов
     try:
         await asyncio.to_thread(
             app.clients.add_or_update,
-            client_id=str(message.from_user.id),
+            client_id=str(msg.from_user.id),
             name=data["client_name"],
             phone=data["phone"],
             service_name=data["service"],
-            service_date=data["start_iso"],  # ← FIX: дата записи, не текущее время
+            service_date=data["start_iso"],
         )
-        logger.info("Client saved: %s", message.from_user.id)
+        logger.info("Client saved: %s", msg.from_user.id)
     except Exception as e:
         logger.error("Error saving client: %s", e)
 
     try:
         ics_content = await asyncio.to_thread(app.calendar.generate_ics, booking)
-        await message.answer_document(
+        await msg.answer_document(
             document=types.BufferedInputFile(
                 file=ics_content.encode("utf-8"),
                 filename=f"booking_{booking.start.strftime('%d%m%Y')}.ics",
@@ -294,6 +486,18 @@ async def book_confirm(message: Message, state: FSMContext, app: AppState) -> No
         )
     except Exception as e:
         logger.error("Error sending ics: %s", e)
+
+
+async def book_confirm_text(message: Message, state: FSMContext, app: AppState) -> None:
+    answer = (message.text or "").strip().lower()
+    if answer not in {"да", "нет"}:
+        await message.answer("Ответьте «да» или «нет».", reply_markup=_confirm_keyboard())
+        return
+    if answer == "нет":
+        await state.clear()
+        await message.answer("❌ Отменил. Если захотите — /book")
+        return
+    await confirm_booking(message, state, app)
 
 
 async def consult(message: Message, state: FSMContext, app: AppState) -> None:
@@ -398,22 +602,49 @@ def main() -> None:
         async def _book_dt(message: Message, state: FSMContext) -> None:
             await book_dt(message, state, app_state)
 
-        async def _book_confirm(message: Message, state: FSMContext) -> None:
-            await book_confirm(message, state, app_state)
+        async def _book_confirm_text(message: Message, state: FSMContext) -> None:
+            await book_confirm_text(message, state, app_state)
 
         async def _maybe_start_booking(message: Message, state: FSMContext) -> None:
             await maybe_start_booking(message, state, app_state)
+
+        async def _handle_category_cb(cq: CallbackQuery, state: FSMContext) -> None:
+            await handle_category_cb(cq, state, app_state)
+
+        async def _handle_service_page_cb(cq: CallbackQuery, state: FSMContext) -> None:
+            await handle_service_page_cb(cq, state, app_state)
+
+        async def _handle_service_cb(cq: CallbackQuery, state: FSMContext) -> None:
+            await handle_service_cb(cq, state, app_state)
+
+        async def _handle_time_cb(cq: CallbackQuery, state: FSMContext) -> None:
+            await handle_time_cb(cq, state, app_state)
+
+        async def _handle_back_cb(cq: CallbackQuery, state: FSMContext) -> None:
+            await handle_back_cb(cq, state, app_state)
+
+        async def _handle_confirm_cb(cq: CallbackQuery, state: FSMContext) -> None:
+            await handle_confirm_cb(cq, state, app_state)
 
         dp.message.register(_cmd_start, Command("start"))
         dp.message.register(cmd_help, Command("help"))
         dp.message.register(_cmd_price, Command("price"))
         dp.message.register(_cmd_book, Command("book"))
 
+        dp.message.register(_book_service, BookingFlow.category, F.text)
         dp.message.register(_book_service, BookingFlow.service, F.text)
         dp.message.register(_book_dt, BookingFlow.dt, F.text)
         dp.message.register(book_name, BookingFlow.name, F.text)
         dp.message.register(book_phone, BookingFlow.phone, F.text)
-        dp.message.register(_book_confirm, BookingFlow.confirm, F.text)
+        dp.message.register(_book_confirm_text, BookingFlow.confirm, F.text)
+
+        dp.callback_query.register(_handle_category_cb, F.data.startswith("cat:"), BookingFlow.category)
+        dp.callback_query.register(_handle_service_cb, F.data.startswith("svc:"), BookingFlow.service)
+        dp.callback_query.register(_handle_service_page_cb, F.data.startswith("page:"), BookingFlow.service)
+        dp.callback_query.register(_handle_back_cb, F.data.startswith("back:"), BookingFlow.service)
+        dp.callback_query.register(_handle_back_cb, F.data.startswith("back:"), BookingFlow.dt)
+        dp.callback_query.register(_handle_time_cb, F.data.startswith("time:"), BookingFlow.dt)
+        dp.callback_query.register(_handle_confirm_cb, F.data.startswith("confirm:"), BookingFlow.confirm)
 
         dp.message.register(_maybe_start_booking, F.text)
 
