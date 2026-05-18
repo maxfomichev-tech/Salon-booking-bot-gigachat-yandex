@@ -27,8 +27,10 @@ Yandex Calendar Client — работа с Яндекс.Календарём ч�
 from __future__ import annotations
 
 import logging
+import re
 import uuid
-from datetime import datetime, timedelta
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
 
@@ -91,11 +93,28 @@ class YandexCalendarClient:
         )
         return resp
 
+    @staticmethod
+    def _fold_ics_line(line: str, max_bytes: int = 75) -> str:
+        raw = line.encode("utf-8")
+        if len(raw) <= max_bytes:
+            return line
+        # folding на границе слов
+        parts = []
+        while line:
+            tail = line[:max_bytes]
+            # откатываемся до пробела, не превышая max_bytes
+            while len(tail.encode("utf-8")) > max_bytes or (len(line) > len(tail) and tail[-1] != ' '):
+                tail = tail[:-1]
+            parts.append(tail.rstrip(" "))
+            line = line[len(tail):]
+        result = "\r\n ".join(parts)
+        return result
+
     def _generate_ics(self, booking: Booking, uid: str) -> str:
         """Генерирует iCalendar формат для события."""
         dt_format = "%Y%m%dT%H%M%SZ"
-        start_utc = booking.start.astimezone(__import__("datetime").timezone.utc)
-        end_utc = booking.end.astimezone(__import__("datetime").timezone.utc)
+        start_utc = booking.start.astimezone(timezone.utc)
+        end_utc = booking.end.astimezone(timezone.utc)
 
         start_str = start_utc.strftime(dt_format)
         end_str = end_utc.strftime(dt_format)
@@ -103,14 +122,14 @@ class YandexCalendarClient:
 
         summary = f"Запись: {booking.service_name}"
 
-        # iCalendar RFC 5545: перенос строк в DESCRIPTION — через \n (буквальный backslash + n)
-        # ИЛИ через пробел в начале продолжения строки (folding)
-        # Яндекс.Календарь лучше понимает \n
-        description = (
-            f"КЛИЕНТ: {booking.client_name}; "
-            f"ТЕЛЕФОН: {booking.phone}; "
-            f"УСЛУГА: {booking.service_name}."
-        )
+        desc_parts = [
+            f"КЛИЕНТ: {booking.client_name}",
+            f"ТЕЛЕФОН: {booking.phone}",
+            f"УСЛУГА: {booking.service_name}",
+            f"САЛОН: {booking.salon_name}",
+        ]
+        description_raw = "\\n".join(desc_parts)
+        description = self._fold_ics_line(description_raw)
 
         ics = f"""BEGIN:VCALENDAR
 VERSION:2.0
@@ -169,15 +188,22 @@ END:VCALENDAR"""
             logger.error("CalDAV REPORT failed: %s %s", resp.status_code, resp.text[:200])
             return []
 
-        # Парсим XML-ответ (упрощённо)
-        # В реальном коде лучше использовать xml.etree.ElementTree
-        events = []
-        # Здесь должен быть парсинг XML, но для простоты
-        # проверяем наличие VEVENT в ответе
-        if "BEGIN:VEVENT" in resp.text:
-            # Есть события в этом диапазоне
-            events.append({"found": True})
+        try:
+            root = ET.fromstring(resp.text)
+        except ET.ParseError as e:
+            logger.error("Failed to parse CalDAV XML response: %s", e)
+            return []
 
+        CALDAV_NS = "urn:ietf:params:xml:ns:caldav"
+        events = []
+
+        for cd in root.iter(f"{{{CALDAV_NS}}}calendar-data"):
+            ics = cd.text or ""
+            m = re.search(r"^UID:(.+)$", ics, re.MULTILINE)
+            uid = m.group(1).strip() if m else "unknown"
+            events.append({"uid": uid, "found": True})
+
+        logger.info("Found %d events in range %s – %s", len(events), start_str, end_str)
         return events
 
     def create_booking_event(self, booking: Booking) -> str:

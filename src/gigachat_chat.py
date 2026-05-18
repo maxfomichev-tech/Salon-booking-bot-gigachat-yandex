@@ -17,7 +17,7 @@ SYSTEM_PROMPT_RU = """Ты — Олег, администратор салона
 ВАЖНО:
 - Если клиент говорит "завтра", "послезавтра" — считай относительно сегодняшней даты.
 - Не выдумывай даты — используй сегодняшнюю дату как опорную точку.
-- Часы работы: с 10 до 20, кроме субботы и воскресенья.
+- Часы работы: с {work_start} до {work_end}, кроме субботы и воскресенья.
 
 Твоя задача: кратко и вежливо консультировать клиента по услугам, ценам, длительности, уходу и подготовке.
 Если клиент хочет записаться, попроси: услугу, дату, время, имя и телефон.
@@ -54,12 +54,16 @@ class GigaChatConsultant:
         timezone: str = "Europe/Moscow",
         scope: str | None = None,
         verify_ssl_certs: bool = True,
+        work_start_hour: int = 10,
+        work_end_hour: int = 20,
     ) -> None:
         self._model = model
         self._salon_name = salon_name
         self._services_text = services_text
         self._address = address
         self._timezone = timezone
+        self._work_start_hour = work_start_hour
+        self._work_end_hour = work_end_hour
 
         # Создаём клиент ОДИН РАЗ при инициализации бота
         # Параметры credentials и scope также можно задать через env:
@@ -116,6 +120,8 @@ class GigaChatConsultant:
             current_date=current_date,
             weekday=weekday_ru,
             timezone=self._timezone,
+            work_start=self._work_start_hour,
+            work_end=self._work_end_hour,
         )
 
         chat = Chat(

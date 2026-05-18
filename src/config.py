@@ -18,6 +18,8 @@ class Config:
     salon_timezone: str
     salon_name: str
     address: str
+    work_start_hour: int
+    work_end_hour: int
     # Yandex Disk - client storage
     yandex_disk_token: str
     yandex_disk_file_path: str
@@ -49,6 +51,8 @@ def load_config() -> Config:
         salon_timezone=os.getenv("SALON_TIMEZONE", "Europe/Moscow"),
         salon_name=os.getenv("SALON_NAME", "Аарон"),
         address=os.getenv("ADDRESS", ""),
+        work_start_hour=int(os.getenv("WORK_START_HOUR", "10")),
+        work_end_hour=int(os.getenv("WORK_END_HOUR", "20")),
         yandex_disk_token=_require("YANDEX_DISK_TOKEN"),
         yandex_disk_file_path=os.getenv("YANDEX_DISK_FILE_PATH", "/salon-bot/clients.xlsx"),
         yandex_caldav_url=_require("YANDEX_CALDAV_URL"),

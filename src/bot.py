@@ -63,13 +63,11 @@ def _is_weekend(dt: datetime) -> bool:
     return dt.weekday() >= 5
 
 
-def _is_outside_work_hours(dt: datetime, work_start: int = 10, work_end: int = 20) -> bool:
-    """Проверяет, что время вне рабочих часов (по умолчанию 10:00–20:00)."""
+def _is_outside_work_hours(dt: datetime, work_start: int, work_end: int) -> bool:
     return dt.hour < work_start or dt.hour >= work_end
 
 
-def _format_work_hours(work_start: int = 10, work_end: int = 20) -> str:
-    """Форматирует часы работы для сообщения."""
+def _format_work_hours(work_start: int, work_end: int) -> str:
     return f"{work_start:02d}:00–{work_end:02d}:00"
 
 
@@ -107,6 +105,7 @@ async def cmd_start(message: Message, state: FSMContext, app: AppState) -> None:
         "Я могу:\n"
         "- подсказать по услугам и ценам 📋\n"
         "- записать вас на услугу 📅\n\n"
+        f"Часы работы: {_format_work_hours(app.cfg.work_start_hour, app.cfg.work_end_hour)}\n"
         "Команды:\n"
         "/price — прайс-лист\n"
         "/book — запись \n"
@@ -178,10 +177,9 @@ async def book_dt(message: Message, state: FSMContext, app: AppState) -> None:
         )
         return
 
-    # FIX: Проверка рабочего времени (10:00–20:00)
-    if _is_outside_work_hours(dt):
+    if _is_outside_work_hours(dt, app.cfg.work_start_hour, app.cfg.work_end_hour):
         await message.answer(
-            f"⚠️ Салон работает с {_format_work_hours()}.\n"
+            f"⚠️ Салон работает с {_format_work_hours(app.cfg.work_start_hour, app.cfg.work_end_hour)}.\n"
             f"Вы выбрали {dt.strftime('%H:%M')}. Пожалуйста, выберите время в рабочие часы."
         )
         return
@@ -369,6 +367,8 @@ def main() -> None:
         services_text=format_services(services, limit=60),
         address=cfg.address,
         timezone=cfg.salon_timezone,
+        work_start_hour=cfg.work_start_hour,
+        work_end_hour=cfg.work_end_hour,
     )
 
     app_state = AppState(
