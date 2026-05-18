@@ -608,23 +608,50 @@ def main() -> None:
         async def _maybe_start_booking(message: Message, state: FSMContext) -> None:
             await maybe_start_booking(message, state, app_state)
 
-        async def _handle_category_cb(cq: CallbackQuery, state: FSMContext) -> None:
-            await handle_category_cb(cq, state, app_state)
+        async def _handle_callback(cq: CallbackQuery, state: FSMContext) -> None:
+            data = cq.data
+            st = await state.get_state()
 
-        async def _handle_service_page_cb(cq: CallbackQuery, state: FSMContext) -> None:
-            await handle_service_page_cb(cq, state, app_state)
+            if data.startswith("cat:"):
+                if st == BookingFlow.category.state:
+                    await handle_category_cb(cq, state, app_state)
+                    return
+            elif data.startswith("svc:"):
+                if st == BookingFlow.service.state:
+                    idx = int(data.split(":", 1)[1])
+                    svc = app_state.services[idx]
+                    await state.update_data(
+                        service=svc.service,
+                        duration_minutes=svc.duration_minutes,
+                        price_rub=svc.price_rub,
+                    )
+                    await state.set_state(BookingFlow.dt)
+                    await cq.message.edit_text(
+                        "✅ Отлично. Напишите дату. Например: <code>20.06</code> или <code>20.06 15:30</code>\n"
+                        f"Часовой пояс: {app_state.cfg.salon_timezone}",
+                        parse_mode=ParseMode.HTML,
+                    )
+                    await cq.answer()
+                    return
+            elif data.startswith("page:"):
+                if st == BookingFlow.service.state:
+                    await handle_service_page_cb(cq, state, app_state)
+                    return
+            elif data.startswith("back:"):
+                if st in (BookingFlow.service.state, BookingFlow.dt.state):
+                    await handle_back_cb(cq, state, app_state)
+                    return
+            elif data.startswith("time:"):
+                if st == BookingFlow.dt.state:
+                    await handle_time_cb(cq, state, app_state)
+                    return
+            elif data.startswith("confirm:"):
+                if st == BookingFlow.confirm.state:
+                    await handle_confirm_cb(cq, state, app_state)
+                    return
 
-        async def _handle_service_cb(cq: CallbackQuery, state: FSMContext) -> None:
-            await handle_service_cb(cq, state, app_state)
-
-        async def _handle_time_cb(cq: CallbackQuery, state: FSMContext) -> None:
-            await handle_time_cb(cq, state, app_state)
-
-        async def _handle_back_cb(cq: CallbackQuery, state: FSMContext) -> None:
-            await handle_back_cb(cq, state, app_state)
-
-        async def _handle_confirm_cb(cq: CallbackQuery, state: FSMContext) -> None:
-            await handle_confirm_cb(cq, state, app_state)
+            logger.warning("Unhandled callback: %s (state: %s)", data, st)
+            await cq.answer("⚠️ Кнопка устарела. Начните /book заново.")
 
         dp.message.register(_cmd_start, Command("start"))
         dp.message.register(cmd_help, Command("help"))
@@ -638,13 +665,7 @@ def main() -> None:
         dp.message.register(book_phone, BookingFlow.phone, F.text)
         dp.message.register(_book_confirm_text, BookingFlow.confirm, F.text)
 
-        dp.callback_query.register(_handle_category_cb, F.data.startswith("cat:"), BookingFlow.category)
-        dp.callback_query.register(_handle_service_cb, F.data.startswith("svc:"), BookingFlow.service)
-        dp.callback_query.register(_handle_service_page_cb, F.data.startswith("page:"), BookingFlow.service)
-        dp.callback_query.register(_handle_back_cb, F.data.startswith("back:"), BookingFlow.service)
-        dp.callback_query.register(_handle_back_cb, F.data.startswith("back:"), BookingFlow.dt)
-        dp.callback_query.register(_handle_time_cb, F.data.startswith("time:"), BookingFlow.dt)
-        dp.callback_query.register(_handle_confirm_cb, F.data.startswith("confirm:"), BookingFlow.confirm)
+        dp.callback_query.register(_handle_callback)
 
         dp.message.register(_maybe_start_booking, F.text)
 
