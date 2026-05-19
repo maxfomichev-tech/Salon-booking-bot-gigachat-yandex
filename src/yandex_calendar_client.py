@@ -123,10 +123,10 @@ class YandexCalendarClient:
         summary = f"Запись: {booking.service_name}"
 
         desc_parts = [
-            f"КЛИЕНТ: {booking.client_name}",
-            f"ТЕЛЕФОН: {booking.phone}",
-            f"УСЛУГА: {booking.service_name}",
-            f"САЛОН: {booking.salon_name}",
+            f"👤 Клиент: {booking.client_name}",
+            f"📞 Телефон: {booking.phone}",
+            f"✂️ Услуга: {booking.service_name}",
+            f"🏠 Салон: {booking.salon_name}",
         ]
         description_raw = "\\n".join(desc_parts)
         description = self._fold_ics_line(description_raw)
