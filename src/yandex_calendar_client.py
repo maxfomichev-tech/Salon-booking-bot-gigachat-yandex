@@ -160,8 +160,10 @@ END:VCALENDAR"""
 
     def _get_events_in_range(self, start: datetime, end: datetime) -> list[dict]:
         """Получает события в диапазоне через CalDAV REPORT."""
-        start_str = start.strftime("%Y%m%dT%H%M%SZ")
-        end_str = end.strftime("%Y%m%dT%H%M%SZ")
+        start_utc = start.astimezone(timezone.utc)
+        end_utc = end.astimezone(timezone.utc)
+        start_str = start_utc.strftime("%Y%m%dT%H%M%SZ")
+        end_str = end_utc.strftime("%Y%m%dT%H%M%SZ")
 
         body = f"""<?xml version="1.0" encoding="utf-8"?>
 <C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
