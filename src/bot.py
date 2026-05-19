@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -23,7 +24,7 @@ from src.yandex_disk_xlsx_client import YandexDiskXlsxClient
 from src.gigachat_chat import GigaChatConsultant
 from src.services import load_services, format_services, Service
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
 logger = logging.getLogger("aaron-salon-bot")
 
 
@@ -584,12 +585,13 @@ def main() -> None:
     )
 
     async def _run() -> None:
+        print("BOT_STARTING", flush=True)
         bot = Bot(token=cfg.telegram_bot_token)
         dp = Dispatcher(storage=MemoryStorage())
 
         @dp.callback_query.middleware()
         async def log_callback_query(handler, event, data):
-            logger.info("CALLBACK_MW: data=%s", event.data)
+            print(f"CALLBACK_MW: data={event.data}", flush=True)
             return await handler(event, data)
 
         async def _cmd_start(message: Message, state: FSMContext) -> None:

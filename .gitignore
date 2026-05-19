@@ -6,4 +6,3 @@ __pycache__/
 services_pricelist.xlsx
 test*.py
 scripts/
-AGENTS.md
