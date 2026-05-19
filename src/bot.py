@@ -457,7 +457,7 @@ async def book_phone(message: Message, state: FSMContext) -> None:
 async def confirm_booking(msg: Message, state: FSMContext, app: AppState, user_id: str | None = None) -> None:
     data = await state.get_data()
     start = datetime.fromisoformat(data["start_iso"])
-    booking = Booking(...
+    booking = Booking(
         service_name=data["service"],
         client_name=data["client_name"],
         phone=data["phone"],
