@@ -179,6 +179,11 @@ class YandexDiskXlsxClient:
         ws.column_dimensions["G"].width = 25
         ws.column_dimensions["H"].width = 10
 
+        # Телефон — текстовый формат (чтобы +7 не превращалось в число)
+        for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
+            for cell in row:
+                cell.number_format = "@"
+
         # Заморозить заголовок
         ws.freeze_panes = "A2"
 
@@ -237,7 +242,7 @@ class YandexDiskXlsxClient:
             values = [
                 row_data.get("ID клиента", ""),
                 row_data.get("Имя", ""),
-                row_data.get("Телефон", ""),
+                str(row_data.get("Телефон", "")),  # str() сохраняет +7
                 row_data.get("Первый контакт", ""),
                 row_data.get("Последний контакт", ""),
                 row_data.get("Дата услуги", ""),
@@ -247,6 +252,8 @@ class YandexDiskXlsxClient:
             for col_idx, value in enumerate(values, 1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=value)
                 cell.border = self.BORDER
+                if col_idx == 3:  # Телефон — текстовый формат
+                    cell.number_format = "@"
 
         # Ширина колонок
         ws.column_dimensions["A"].width = 15
@@ -294,7 +301,7 @@ class YandexDiskXlsxClient:
                 row["Визитов"] = str(int(str(row.get("Визитов", "0"))) + 1)
                 # FIX: Всегда обновляем имя и телефон актуальными данными
                 row["Имя"] = name
-                row["Телефон"] = phone
+                row["Телефон"] = str(phone)  # str() сохраняет +7
                 self._write_all(rows)
                 logger.info("Updated client %s in XLSX", client_id)
                 return
@@ -303,7 +310,7 @@ class YandexDiskXlsxClient:
         rows.append({
             "ID клиента": str(client_id),
             "Имя": name,
-            "Телефон": phone,
+            "Телефон": str(phone),  # str() сохраняет +7
             "Первый контакт": now,
             "Последний контакт": now,
             "Дата услуги": last_service,  # ← Дата из записи!

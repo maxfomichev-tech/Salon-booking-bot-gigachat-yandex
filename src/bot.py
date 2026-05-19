@@ -321,7 +321,7 @@ async def handle_confirm_cb(cq: CallbackQuery, state: FSMContext, app: AppState)
         await cq.answer()
         return
 
-    await confirm_booking(cq.message, state, app)
+    await confirm_booking(cq.message, state, app, user_id=str(cq.from_user.id))
     await cq.answer()
 
 
@@ -454,10 +454,10 @@ async def book_phone(message: Message, state: FSMContext) -> None:
     )
 
 
-async def confirm_booking(msg: Message, state: FSMContext, app: AppState) -> None:
+async def confirm_booking(msg: Message, state: FSMContext, app: AppState, user_id: str | None = None) -> None:
     data = await state.get_data()
     start = datetime.fromisoformat(data["start_iso"])
-    booking = Booking(
+    booking = Booking(...
         service_name=data["service"],
         client_name=data["client_name"],
         phone=data["phone"],
@@ -480,7 +480,7 @@ async def confirm_booking(msg: Message, state: FSMContext, app: AppState) -> Non
     try:
         await asyncio.to_thread(
             app.clients.add_or_update,
-            client_id=str(msg.from_user.id),
+            client_id=user_id or str(msg.from_user.id),
             name=data["client_name"],
             phone=data["phone"],
             service_name=data["service"],
