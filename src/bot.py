@@ -261,7 +261,8 @@ async def handle_time_cb(cq: CallbackQuery, state: FSMContext, app: AppState) ->
     if _is_weekend(dt):
         await cq.message.answer(
             "⚠️ Вы выбрали выходной день.\n"
-            "Салон работает с понедельника по пятницу. Выберите другую дату.",
+            "Салон работает с понедельника по пятницу. Выберите другую дату\n"
+            "или нажмите /help для выхода.",
             reply_markup=_time_slots_keyboard(app.cfg.work_start_hour, app.cfg.work_end_hour),
         )
         await cq.answer()
@@ -270,7 +271,8 @@ async def handle_time_cb(cq: CallbackQuery, state: FSMContext, app: AppState) ->
     if _is_outside_work_hours(dt, app.cfg.work_start_hour, app.cfg.work_end_hour):
         await cq.message.answer(
             f"⚠️ Салон работает с {_format_work_hours(app.cfg.work_start_hour, app.cfg.work_end_hour)}.\n"
-            f"Вы выбрали {dt.strftime('%H:%M')}. Пожалуйста, выберите время в рабочие часы.",
+            f"Вы выбрали {dt.strftime('%H:%M')}. Пожалуйста, выберите время в рабочие часы\n"
+            "или нажмите /help для выхода.",
             reply_markup=_time_slots_keyboard(app.cfg.work_start_hour, app.cfg.work_end_hour),
         )
         await cq.answer()
@@ -282,7 +284,8 @@ async def handle_time_cb(cq: CallbackQuery, state: FSMContext, app: AppState) ->
     try:
         if not app.calendar.is_time_available(dt, end):
             await cq.message.answer(
-                f"⚠️ К сожалению, время {dt.strftime('%H:%M')} уже занято. Выберите другое:",
+                f"⚠️ К сожалению, время {dt.strftime('%H:%M')} уже занято. Выберите другое\n"
+                "или нажмите /help для выхода:",
                 reply_markup=_time_slots_keyboard(app.cfg.work_start_hour, app.cfg.work_end_hour),
             )
             await cq.answer()
@@ -344,7 +347,8 @@ async def book_service(message: Message, state: FSMContext, app: AppState) -> No
     svc = _match_service(app.services, message.text or "")
     if not svc:
         await message.answer(
-            "Не нашёл такую услугу. Выберите категорию:",
+            "Не нашёл такую услугу. Выберите категорию:\n"
+            "или нажмите /help для продолжения консультации",
             reply_markup=_categories_keyboard(app.services),
         )
         return
@@ -390,14 +394,15 @@ async def book_dt(message: Message, state: FSMContext, app: AppState) -> None:
         await message.answer(
             "⚠️ Вы выбрали выходной день.\n"
             "Наш салон работает с понедельника по пятницу.\n"
-            "Пожалуйста, выберите другую дату."
+            "Пожалуйста, выберите другую дату или нажмите /help для выхода."
         )
         return
 
     if _is_outside_work_hours(dt, app.cfg.work_start_hour, app.cfg.work_end_hour):
         await message.answer(
             f"⚠️ Салон работает с {_format_work_hours(app.cfg.work_start_hour, app.cfg.work_end_hour)}.\n"
-            f"Вы выбрали {dt.strftime('%H:%M')}. Пожалуйста, выберите время в рабочие часы."
+            f"Вы выбрали {dt.strftime('%H:%M')}. Пожалуйста, выберите время в рабочие часы\n"
+            "или нажмите /help для выхода."
         )
         return
 
@@ -409,7 +414,8 @@ async def book_dt(message: Message, state: FSMContext, app: AppState) -> None:
         if not app.calendar.is_time_available(dt, end):
             await message.answer(
                 f"⚠️ К сожалению, время {dt.strftime('%H:%M')} уже занято.\n"
-                "Пожалуйста, выберите другое время:"
+                "Пожалуйста, выберите другое время\n"
+                "или нажмите /help для выхода."
             )
             return
     except Exception as e:
@@ -423,7 +429,10 @@ async def book_dt(message: Message, state: FSMContext, app: AppState) -> None:
 async def book_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
     if len(name) < 2:
-        await message.answer("Имя слишком короткое. Напишите ещё раз.")
+        await message.answer(
+            "Имя слишком короткое. Напишите ещё раз\n"
+            "или нажмите /help для выхода."
+        )
         return
     await state.update_data(client_name=name)
     await state.set_state(BookingFlow.phone)
@@ -434,7 +443,8 @@ async def book_phone(message: Message, state: FSMContext) -> None:
     phone = (message.text or "").strip()
     if len(phone) < 6:
         await message.answer(
-            "Похоже на слишком короткий номер. Напишите телефон ещё раз."
+            "Похоже на слишком короткий номер. Напишите телефон ещё раз\n"
+            "или нажмите /help для выхода."
         )
         return
     await state.update_data(phone=phone)
