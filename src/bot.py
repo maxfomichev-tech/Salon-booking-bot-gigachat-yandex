@@ -587,6 +587,11 @@ def main() -> None:
         bot = Bot(token=cfg.telegram_bot_token)
         dp = Dispatcher(storage=MemoryStorage())
 
+        @dp.callback_query.middleware()
+        async def log_callback_query(handler, event, data):
+            logger.info("CALLBACK_MW: data=%s", event.data)
+            return await handler(event, data)
+
         async def _cmd_start(message: Message, state: FSMContext) -> None:
             await cmd_start(message, state, app_state)
 
@@ -609,6 +614,9 @@ def main() -> None:
             await maybe_start_booking(message, state, app_state)
 
         async def _handle_callback(cq: CallbackQuery, state: FSMContext) -> None:
+            if not cq.data:
+                await cq.answer()
+                return
             try:
                 data = cq.data
                 st = await state.get_state()
@@ -670,7 +678,7 @@ def main() -> None:
         dp.message.register(book_phone, BookingFlow.phone, F.text)
         dp.message.register(_book_confirm_text, BookingFlow.confirm, F.text)
 
-        dp.callback_query.register(_handle_callback, F.data)
+        dp.callback_query.register(_handle_callback)
 
         dp.message.register(_maybe_start_booking, F.text)
 
@@ -683,6 +691,8 @@ def main() -> None:
 
         if webhook_url:
             await bot.set_webhook(webhook_url)
+            wh_info = await bot.get_webhook_info()
+            logger.info("Webhook set: url=%s allowed_updates=%s", wh_info.url, wh_info.allowed_updates)
             logger.info("Bot starting in webhook mode on port %s", port)
 
             app = web.Application()

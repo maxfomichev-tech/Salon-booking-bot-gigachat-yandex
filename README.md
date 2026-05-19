@@ -33,8 +33,13 @@ Copy
 ```plain
 .
 ├── .env                          # Переменные окружения (не коммитить!)
+├── .env.example                  # Пример переменных окружения
+├── .gitignore                    # Игнорируемые файлы
 ├── requirements.txt              # Зависимости
-├── services_pricelist.csv        # Прайс-лист услуг
+├── runtime.txt                   # Версия Python (3.13.2)
+├── render.yaml                   # Конфигурация для Render.com
+├── services_pricelist.csv        # Прайс-лист услуг (CSV)
+├── services_pricelist.xlsx       # Прайс-лист услуг (XLSX)
 └── src/
     ├── bot.py                    # Точка входа, Telegram бот
     ├── config.py                 # Загрузка конфигурации из .env
@@ -93,6 +98,26 @@ cp .env.example .env
 | `YANDEX_CALDAV_USERNAME` | Ваш логин Яндекса (например `login@yandex.ru`)                                                                         |
 | `YANDEX_CALDAV_PASSWORD` | [id.yandex.ru/security/app-passwords](https://id.yandex.ru/security/app-passwords) — пароль для приложения «Календарь» |
 
+#### **Опциональные переменные**
+
+**Table**
+
+| **Переменная**              | **По умолчанию**              | **Описание**                                    |
+| --------------------------- | ----------------------------- | ----------------------------------------------- |
+| `GIGACHAT_MODEL`            | `GigaChat`                    | Модель GigaChat                                 |
+| `GIGACHAT_SCOPE`            | `GIGACHAT_API_PERS`           | Область доступа                                 |
+| `GIGACHAT_VERIFY_SSL_CERTS` | `true`                        | Проверка SSL-сертификатов                       |
+| `YANDEX_DISK_FILE_PATH`     | `/salon-bot/clients.xlsx`     | Путь к файлу клиентов на Яндекс.Диске           |
+| `SALON_NAME`                | `Аарон`                       | Название салона                                 |
+| `SALON_TIMEZONE`            | `Europe/Moscow`               | Часовой пояс                                    |
+| `ADDRESS`                   | —                             | Адрес салона                                    |
+| `WORK_START_HOUR`           | `10`                          | Начало рабочего дня (час)                       |
+| `WORK_END_HOUR`             | `20`                          | Конец рабочего дня (час)                        |
+| `SERVICES_CSV`              | `services_pricelist.csv`      | Путь к файлу прайс-листа                        |
+| `WEBHOOK_URL`               | —                             | Явный URL вебхука (автоопределение на Render)   |
+| `RENDER_EXTERNAL_URL`       | —                             | URL приложения на Render (определяется сам)     |
+| `PORT`                      | `10000`                       | Порт веб-сервера                                |
+
 
 #### **Пример** `.env`
 
@@ -101,24 +126,35 @@ cp .env.example .env
 Copy
 
 ```env
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+# Telegram
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 
-GIGACHAT_CREDENTIALS=base64_encoded_credentials
+# GigaChat (Сбер, РФ)
+GIGACHAT_CREDENTIALS=your_gigachat_credentials
 GIGACHAT_MODEL=GigaChat
 GIGACHAT_SCOPE=GIGACHAT_API_PERS
 GIGACHAT_VERIFY_SSL_CERTS=false
 
-YANDEX_DISK_TOKEN=y0_AgAAAABCD123EFG456
+# Яндекс.Диск — таблица клиентов
+YANDEX_DISK_TOKEN=your_yandex_oauth_token
 YANDEX_DISK_FILE_PATH=/salon-bot/clients.xlsx
 
-YANDEX_CALDAV_URL=https://caldav.yandex.ru/calendars/login/events-default/
-YANDEX_CALDAV_USERNAME=login@yandex.ru
-YANDEX_CALDAV_PASSWORD=abcd efgh ijkl mnop
+# Яндекс.Календарь — CalDAV
+YANDEX_CALDAV_URL=https://caldav.yandex.ru/calendars/your_login/events-default/
+YANDEX_CALDAV_USERNAME=your_login@yandex.ru
+YANDEX_CALDAV_PASSWORD=your_16_char_app_password
 
+# Салон
 SALON_NAME=Аарон
 SALON_TIMEZONE=Europe/Moscow
-ADDRESS=ул. Примерная, 123
+ADDRESS=Ваш адрес
+WORK_START_HOUR=10
+WORK_END_HOUR=20
 SERVICES_CSV=services_pricelist.csv
+
+# Render (опционально)
+# WEBHOOK_URL=https://your-app.onrender.com/webhook
+# RENDER_EXTERNAL_URL=https://your-app.onrender.com
 ```
 
 ### **4. Прайс-лист**
@@ -156,10 +192,10 @@ python -m src.bot
 
 | **Команда** | **Описание**               |
 | ----------- | -------------------------- |
-| `/start`    | Приветствие и список услуг |
-| `/price`    | Полный прайс-лист          |
-| `/book`     | Начать запись на услугу    |
-| `/help`     | Помощь                     |
+| `/start`    | Приветствие AI-консультанта **Олега** и список услуг (до 12) |
+| `/price`    | Полный прайс-лист (до 30 позиций)                             |
+| `/book`     | Начать запись на услугу                                       |
+| `/help`     | Помощь                                                        |
 
 
 ## **Процесс записи**
@@ -169,15 +205,23 @@ python -m src.bot
 Copy
 
 ```plain
-/book → Выбор услуги → Дата и время → Имя → Телефон → Подтверждение
+/book → Категория → Услуга → Дата и время → Имя → Телефон → Подтверждение
 ```
 
 Бот проверяет:
 
 - ✅ Существует ли такая услуга
-- ✅ Не выходной ли день (суббота)
-- ✅ Свободно ли время
-- ✅ Формат даты
+- ✅ Не выходной ли день (суббота и воскресенье)
+- ✅ Свободно ли время (проверка через Яндекс.Календарь)
+- ✅ Корректность даты и времени
+
+**Детали процесса записи:**
+
+- **Категории и пагинация** — услуги сгруппированы по категориям, внутри категории показываются по 8 штук с кнопками «Ещё →» и «← Назад»
+- **Выбор услуги текстом** — можно не только нажать кнопку, но и написать название услуги
+- **Форматы даты** — поддерживаются: `ДД.ММ ЧЧ:ММ`, `ДД.ММ.ГГГГ ЧЧ:ММ`, `ГГГГ-ММ-ДД ЧЧ:ММ`
+- **«Другое время»** — кнопка для ручного ввода даты и времени, если предложенные слоты не подходят
+- **Триггеры записи** — фразы `запиши`, `записаться`, `хочу записаться`, `хочу на`, `запись` в любом сообщении автоматически запускают `/book`
 
 После подтверждения:
 
@@ -192,6 +236,7 @@ Copy
 - **Физическое место**: Яндекс.Диск, файл `/salon-bot/clients.xlsx`
 - **Доступ**: [disk.yandex.ru](https://disk.yandex.ru/) → папка `salon-bot`
 - **Формат**: Excel-таблица с заголовками, стилями, шириной колонок
+- **Колонки**: `ID клиента`, `Имя`, `Телефон`, `Первый контакт`, `Последний контакт`, `Дата услуги`, `Услуга`, `Визитов`
 - **Просмотр**: онлайн в браузере или скачать на ПК
 
 ### **Календарь записей**
@@ -199,6 +244,12 @@ Copy
 - **Физическое место**: Яндекс.Календарь
 - **Доступ**: [calendar.yandex.ru](https://calendar.yandex.ru/)
 - **События**: содержат имя клиента, телефон, услугу
+
+### **AI-консультант Олег**
+
+- Представляется как **Олег**, персональный консультант салона
+- Отвечает строго на вопросы об услугах, ценах и работе салона — на посторонние темы не реагирует
+- Не признаётся, что является ботом или ИИ
 
 ### **AI-диалоги**
 
@@ -209,14 +260,18 @@ Copy
 
 ### **Webhook-режим (рекомендуется)**
 
-1. Загрузите код на GitHub
-2. Создайте **Web Service** на [render.com](https://render.com/)
-3. **Build Command**: `pip install -r requirements.txt`
-4. **Start Command**: `python -m src.bot`
-5. В **Environment** добавьте все переменные из `.env`
-6. Добавьте `RENDER_EXTERNAL_URL=https://your-app.onrender.com`
+1. Загрузите код на GitHub (в репозитории уже есть `render.yaml` и `runtime.txt`)
+2. Подключите репозиторий к [render.com](https://render.com/) — `render.yaml` определит настройки автоматически
+3. В **Environment** добавьте секретные переменные: `TELEGRAM_BOT_TOKEN`, `GIGACHAT_CREDENTIALS` и остальные из `.env`
+4. Если `WEBHOOK_URL` не указан, бот сам определит его из `RENDER_EXTERNAL_URL`
 
 Бот автоматически настроит webhook при старте.
+
+**Health-эндпоинты** (для мониторинга Render):
+- `GET /` → `ok`
+- `GET /health` → `ok`
+
+Не используйте polling-режим на Render — webhook надёжнее.
 
 ### **Polling-режим (локально)**
 
@@ -228,7 +283,7 @@ Copy
 python -m src.bot
 ```
 
-Бот работает в режиме long-polling. Не используйте на Render — webhook надёжнее.
+Бот работает в режиме long-polling. При запуске на Render автоматически переключается в webhook-режим (при обнаружении переменной `RENDER_EXTERNAL_URL` или `WEBHOOK_URL`).
 
 ## **Соответствие 152-ФЗ**
 
