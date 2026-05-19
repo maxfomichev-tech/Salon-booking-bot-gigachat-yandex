@@ -42,6 +42,24 @@ def _parse_datetime_ru(text: str, tz: str) -> datetime | None:
     now = datetime.now(ZoneInfo(tz))
 
     try:
+        dt = datetime.strptime(text, "%d.%m")
+        return dt.replace(year=now.year, tzinfo=ZoneInfo(tz))
+    except ValueError:
+        pass
+
+    try:
+        dt = datetime.strptime(text, "%d.%m.%Y")
+        return dt.replace(tzinfo=ZoneInfo(tz))
+    except ValueError:
+        pass
+
+    try:
+        dt = datetime.strptime(text, "%Y-%m-%d")
+        return dt.replace(tzinfo=ZoneInfo(tz))
+    except ValueError:
+        pass
+
+    try:
         dt = datetime.strptime(text, "%d.%m %H:%M")
         return dt.replace(year=now.year, tzinfo=ZoneInfo(tz))
     except ValueError:
@@ -213,7 +231,7 @@ async def handle_service_cb(cq: CallbackQuery, state: FSMContext, app: AppState)
     )
     await state.set_state(BookingFlow.dt)
     await cq.message.edit_text(
-        "✅ Отлично. Напишите дату. Например: <code>20.06</code> или <code>20.06 15:30</code>\n"
+        "✅ Отлично. Напишите дату. Например: <code>20.06</code>\n"
         f"Часовой пояс: {app.cfg.salon_timezone}",
         parse_mode=ParseMode.HTML,
     )
@@ -289,7 +307,7 @@ async def handle_back_cb(cq: CallbackQuery, state: FSMContext, app: AppState) ->
     elif target == "dt":
         await state.set_state(BookingFlow.dt)
         await cq.message.edit_text(
-            "Напишите дату. Например: <code>20.06</code> или <code>20.06 15:30</code>",
+            "Напишите дату. Например: <code>20.06</code>",
             parse_mode=ParseMode.HTML,
         )
     await cq.answer()
@@ -338,12 +356,8 @@ async def book_service(message: Message, state: FSMContext, app: AppState) -> No
     )
     await state.set_state(BookingFlow.dt)
     await message.answer(
-        "✅ Отлично. Напишите дату и время.\n"
-        f"Часовой пояс: {app.cfg.salon_timezone}\n"
-        "Форматы:\n"
-        "<code>20.04 15:30</code> — день.месяц время (текущий год)\n"
-        "<code>20.04.2026 15:30</code> — с указанием года\n"
-        "<code>2026-04-20 15:30</code> — полная дата",
+        "✅ Отлично. Напишите дату. Например: <code>20.06</code>\n"
+        f"Часовой пояс: {app.cfg.salon_timezone}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -352,7 +366,7 @@ async def book_dt(message: Message, state: FSMContext, app: AppState) -> None:
     dt = _parse_datetime_ru(message.text or "", app.cfg.salon_timezone)
     if not dt:
         await message.answer(
-            "Не понял дату/время. Форматы:\n<code>20.04 15:30</code> или <code>2026-04-20 15:30</code>,\n"
+            "Не понял дату. Напишите в формате <code>20.06</code> (день.месяц)\n"
             "или нажмите /help для продолжения консультации",
             parse_mode=ParseMode.HTML,
         )
