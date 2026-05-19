@@ -370,7 +370,7 @@ async def book_dt(message: Message, state: FSMContext, app: AppState) -> None:
     dt = _parse_datetime_ru(message.text or "", app.cfg.salon_timezone)
     if not dt:
         await message.answer(
-            "Не понял дату. Напишите в формате <code>20.06</code> (день.месяц)\n"
+            "Не понял дату. Напишите в формате <code>20.06</code> (день.месяц) или <code>20.06 15:30 (день.месяц время)</code>\n"
             "или нажмите /help для продолжения консультации",
             parse_mode=ParseMode.HTML,
         )
@@ -436,7 +436,7 @@ async def book_name(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(client_name=name)
     await state.set_state(BookingFlow.phone)
-    await message.answer("📱 Ваш телефон (например: +7 999 123-45-67)?")
+    await message.answer("📱 Ваш телефон (например: +7 999 1234567)?")
 
 
 async def book_phone(message: Message, state: FSMContext) -> None:
