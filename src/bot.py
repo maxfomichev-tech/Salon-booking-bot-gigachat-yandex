@@ -692,7 +692,10 @@ def main() -> None:
             webhook_url = f"{render_external_url.rstrip('/')}/webhook"
 
         if webhook_url:
-            await bot.set_webhook(webhook_url)
+            await bot.set_webhook(
+                url=webhook_url,
+                allowed_updates=["message", "callback_query"],
+            )
             wh_info = await bot.get_webhook_info()
             logger.info("Webhook set: url=%s allowed_updates=%s", wh_info.url, wh_info.allowed_updates)
             logger.info("Bot starting in webhook mode on port %s", port)
