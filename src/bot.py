@@ -654,20 +654,7 @@ def main() -> None:
                         return
                 elif data.startswith("svc:"):
                     if st == BookingFlow.service.state:
-                        idx = int(data.split(":", 1)[1])
-                        svc = app_state.services[idx]
-                        await state.update_data(
-                            service=svc.service,
-                            duration_minutes=svc.duration_minutes,
-                            price_rub=svc.price_rub,
-                        )
-                        await state.set_state(BookingFlow.dt)
-                        await cq.message.edit_text(
-                            "✅ Отлично. Напишите дату. Например: <code>20.06</code> или <code>20.06 15:30</code>\n"
-                            f"Часовой пояс: {app_state.cfg.salon_timezone}",
-                            parse_mode=ParseMode.HTML,
-                        )
-                        await cq.answer()
+                        await handle_service_cb(cq, state, app_state)
                         return
                 elif data.startswith("page:"):
                     if st == BookingFlow.service.state:
